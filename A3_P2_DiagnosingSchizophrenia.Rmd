@@ -1,0 +1,269 @@
+---
+title: "Assignment III pt. II"
+author: "Lasse Damgaard"
+date: "December 7, 2017"
+output: html_document
+---
+---
+---
+### Assignment 3 - Diagnosing schizophrenia from voice
+```{r setup, include=FALSE}
+#prelude
+knitr::opts_chunk$set(echo = TRUE)
+path = ("C:/Users/Bruger/Documents/Methods3")
+setwd(path)
+library(pacman)
+p_load(lmerTest, boot, caret, cvms, groupdata2, dplyr,zoo, MuMIn)
+install.packages("cvms")
+df <- read.csv("final_rqa.csv")
+df$mean<- scale(df$mean, center = TRUE)
+df$mean<- scale(df$mean, center = TRUE)
+df$stdDev<- scale(df$std, center = TRUE)
+df$range<- scale(df$range, center = TRUE)
+df$median<- scale(df$median, center = TRUE)
+df<- na.omit(df)
+```
+### Question 1
+```{r}
+  ##Build a logistic regression to see whether you can diagnose schizophrenia from pitch range only.
+m1<-glm(diagnosis ~ range, data = df, family = "binomial")
+summary(m1)
+
+exp(m1$coefficients[2]-m1$coefficients[1])#exponentiate (freakin' odds)
+inv.logit(m1$coefficients[2]-m1$coefficients[1])#inverse log (probabilities)
+
+##Calculate the different performance measures (accuracy, sensitivity, specificity, PPV, NPV, ROC curve) on a logistic regression using the full dataset. Don't forget the random effects!
+
+##N.B. the predict() function generates probabilities (the full scale between 0 and 1). A probability > .5 indicates a choice of 1, below a choice of 0.
+
+m2<-glmer(diagnosis ~ range + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m2)
+
+
+df$predictions=predict(m2)
+df$dpred[df$predictions>0]="schizophrenia"
+df$dpred[df$predictions<0]="control"
+confusionMatrix(data = df$dpred, reference = df$diagnosis, positive = "schizophrenia") 
+
+p_load(pROC)
+
+rocCurve <- roc(response = df$diagnosis, predictor = df$predictions)
+auc(rocCurve)
+ci (rocCurve)
+plot (rocCurve, legacy.axes = TRUE)
+
+
+##Then cross-validate the logistic regression and re-calculate performance on the testing folds. N.B. The cross-validation functions you already have should be tweaked: you need to calculate these new performance measures.
+
+
+##N.B. you need to decide whether calculate performance on each single test fold or save all the prediction for test folds in one dataset, so to calculate overall performance.
+df <- fold(df, k = 4,
+             cat_col = 'diagnosis',
+             id_col = 'participant') %>% 
+  arrange(.folds)
+CV2 <- cross_validate(df, "diagnosis ~ range", 
+                     folds_col = '.folds', 
+                     family='binomial')
+
+
+  ##N.B. Now you have two levels of structure: subject and study. Should this impact your cross-validation?
+```
+### Question 2
+```{r}
+##Which single predictor is the best predictor of diagnosis?
+
+m1<-glmer(diagnosis ~ range + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m1)
+
+m2<-glmer(diagnosis ~ mean + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m2)
+
+m3<-glmer(diagnosis ~ stdDev + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m3)
+
+m4<-glmer(diagnosis ~ median + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m4)
+
+m5<-glmer(diagnosis ~ rqa_REC + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m5)
+
+m6<-glmer(diagnosis ~ rqa_DET + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m6)
+
+m7<-glmer(diagnosis ~ rqa_maxL + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m7)
+
+m8<-glmer(diagnosis ~ rqa_L + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m8)
+
+m9<-glmer(diagnosis ~ rqa_ENTR + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m9)
+
+m10<-glmer(diagnosis ~ rqa_TT + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m10)
+
+m11<-glmer(diagnosis ~ scale(rqa_LAM) + (1|study)+(1|participant), data = df, family = "binomial")
+summary(m11)
+
+anova(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11)
+
+
+anova()
+#find area under the curve, specificity and sensitivity
+C<- fixef(m2)
+exp(C[3]+C[1])#odds
+inv.logit(C[3]+C[1])#with perfectly average mean and range, if you always assume diagnisis is positive, how often will you be correct in this assumption
+```
+### Question 3
+```{r}
+  ##Now it's time to go wild! Use all (voice-related) variables and interactions you can think of. Compare models and select the best performing   model you can find.
+
+# range + mean + stdDev + median + rqa_REC + rqa_DET + rqa_maxL + rqa_L + rqa_ENTR + rqa_TT + rqa_LAM
+
+
+m0<-glmer(diagnosis ~ range + (1+study|participant), data = df, family = "binomial")
+m1<-glmer(diagnosis ~ range + mean + (1+study|participant), data = df, family = "binomial")
+m2<-glmer(diagnosis ~ range + mean + stdDev + (1+study|participant), data = df, family = "binomial")
+m3<-glmer(diagnosis ~ range + mean + stdDev + median + (1+study|participant), data = df, family = "binomial")
+m4<-glmer(diagnosis ~ range + mean + stdDev + median + rqa_REC + (1+study|participant), data = df, family = "binomial")
+m5<-glmer(diagnosis ~ range + mean + stdDev + median + rqa_REC + rqa_DET + (1+study|participant), data = df, family = "binomial")
+m6<-glmer(diagnosis ~ range + mean + stdDev + median + rqa_REC + rqa_DET + rqa_maxL + (1+study|participant), data = df, family = "binomial")
+m7<-glmer(diagnosis ~ range + mean + stdDev + median + rqa_REC + rqa_DET + rqa_maxL + rqa_L + (1+study|participant), data = df, family = "binomial")
+m8<-glmer(diagnosis ~ range + mean + stdDev + median + rqa_REC + rqa_DET + rqa_maxL + rqa_L + rqa_ENTR + (1+study|participant), data = df, family = "binomial")
+m9<-glmer(diagnosis ~ range + mean + stdDev + median + rqa_REC + rqa_DET + rqa_maxL + rqa_L + rqa_ENTR + rqa_TT + (1+study|participant), data = df, family = "binomial")
+m10<-glmer(diagnosis ~ range + mean + stdDev + median + rqa_REC + rqa_DET + rqa_maxL + rqa_L + rqa_ENTR + rqa_TT + scale(rqa_LAM) + (1+study|participant), data = df, family = "binomial")
+
+m11<-glmer(diagnosis ~ range + mean + stdDev + median * rqa_REC + (1+study|participant), data = df, family = "binomial")
+m12<-glmer(diagnosis ~ range + mean + stdDev + median + rqa_REC * rqa_DET + (1+study|participant), data = df, family = "binomial")
+m13<-glmer(diagnosis ~ range + mean + stdDev + median * rqa_REC * rqa_DET * rqa_LAM + (1+study|participant), data = df, family = "binomial")
+
+ULTIMODEL<-glmer(diagnosis ~ scale(range) + scale(mean) + scale(stdDev) * scale(median) * scale(rqa_REC) * scale(rqa_DET) * scale(rqa_LAM) * scale(rqa_maxL) + scale(rqa_L) + scale(rqa_ENTR) + scale(rqa_TT) + (1+study|participant), data = df, family = "binomial")
+
+library(MuMIn)
+r.squaredGLMM(ULTIMODEL)
+
+anova(m0,m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14,ULTIMODEL)
+  ##Remember:
+  # - Cross-validation or AIC are crucial to build the best model!
+    # - After choosing the model, train it on all the data you have
+
+df$predictions=predict(ULTIMODEL)
+df$dpred[df$predictions>0]="schizophrenia"
+df$dpred[df$predictions<0]="control"
+confusionMatrix(data = df$dpred, reference = df$diagnosis, positive = "schizophrenia") 
+
+p_load(caret)
+
+library(pROC)
+rocCurve <- roc(response = df$diagnosis, predictor = df$predictions)
+auc(rocCurve)
+ci (rocCurve)
+plot (rocCurve, legacy.axes = TRUE)
+
+save(m6, file = "BestModelForever.rda")
+
+#WHAT DOES THIS MEAN?
+# - Create a Markdown that can: a) extract the features from new pitch files(basically your previous markdown), b) load your model (e.g.load("BestModelForever.rda")), and c) predict the diagnosis in the new dataframe.
+
+
+# - Create a Markdown that can: a) extract the features from new pitch files(basically your previous markdown), b) load your model (e.g.load("BestModelForever.rda")), and c) predict the diagnosis in the new dataframe.
+
+
+
+
+#par
+par = list(lgM =  10, steps = seq(1, 6, 1),  radiusspan = 100,  radiussample = 40, normalize = 0,  rescale = 0,  mindiagline = 2,  minvertline = 2,  tw = 0,  whiteline = FALSE,  recpt = FALSE,  fnnpercent = 10,  typeami = 'mindip')
+
+#rqa
+rqa_analysis= function(x)(  
+  crqa(x, x, embed = 11, delay = 9, normalize = 0, rescale = 0, radius = 2,
+  mindiagline = 2, minvertline = 1)
+)
+
+#loop-de-loop
+folder = file.path(path)
+pitch_list<- list.files(path = folder, recursive = TRUE, pattern = "*f0.txt")
+std = NULL
+mean = NULL
+study = NULL
+range = NULL
+median = NULL
+iqr = NULL
+mad = NULL
+rqa = NULL
+id = NULL
+diagnosis = NULL
+trial = NULL
+Diagnosis = NULL
+Trial = NULL
+RR = NULL
+DET = NULL
+NRLINE = NULL
+maxL = NULL
+L = NULL
+ENTR = NULL
+rENTR = NULL
+LAM = NULL
+TT = NULL
+RP = NULL
+variance = NULL
+x = NULL
+N = 1
+
+for (i in pitch_list) {
+  x = read.delim(i, header = T)
+  x = x$f0
+  id = str_extract(i, "S+\\d+")
+  id[N] = str_extract(id,"\\d+")
+  diagnosis[N] = str_extract(str_extract(i,"D+\\d"), "\\d")
+  trial[N] = str_extract(str_extract(i,"T+\\d"), "\\d")
+  study[N] = str_extract(i, "\\d")
+  range[N] = range(x,na.rm = T)
+  mean[N] = mean(x,na.rm = T)
+  variance[N] = var(x, na.rm=TRUE)
+  std[N] = std(x)
+  median[N] = median(x, na.rm = T)
+  iqr[N] = IQR(x,na.rm = T)
+  mad[N] = mad(x,na.rm = T)
+  rqa = crqa(x,x, embed = 2, delay = 1, normalize = 0, rescale = 0, radius = 0.5, mindiagline = 2, minvertline = 1)
+  RR[N] = rqa$RR
+  DET[N] = rqa$DET
+  NRLINE[N] = rqa$NRLINE
+  maxL[N] = rqa$maxL
+  L[N] = rqa$L
+  ENTR[N] = rqa$ENTR
+  rENTR[N] = rqa$rENTR
+  LAM[N] = rqa$LAM
+  TT[N] = rqa$TT
+  N = N+1
+}
+
+#save dat like its yo allowance
+dframe = data.frame(id,study,diagnosis,trial,range,mean,variance,std,median,mad,RR,DET,NRLINE,maxL,L,ENTR,rENTR,LAM,TT)
+
+#load the best model
+model<-load(file = "BestModelForever.rda")
+
+#predict!
+df$predictions=predict(model)
+df$dpred[df$predictions>0]="schizophrenia"
+df$dpred[df$predictions<0]="control"
+
+#I'm confused
+confusionMatrix(data = df$dpred, reference = df$diagnosis, positive = "schizophrenia")
+
+#make cross val
+df <- fold(df, k = 4,
+             cat_col = 'diagnosis',
+             id_col = 'participant') %>% 
+  arrange(.folds)
+CV3 <- cross_validate(df, "diagnosis ~ range*mean*stdDev*median", 
+                     folds_col = '.folds', 
+                     family='binomial')
+#you ROC!
+rocCurve <- roc(response = df$diagnosis, predictor = df$predictions)
+auc(rocCurve) 
+ci (rocCurve)
+plot(rocCurve, legacy.axes = TRUE) 
+
+
